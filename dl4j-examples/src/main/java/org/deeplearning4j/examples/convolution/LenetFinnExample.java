@@ -1,7 +1,7 @@
 package org.deeplearning4j.examples.convolution;
 
-import org.deeplearning4j.datasets.iterator.impl.MnistDataSetIterator;
 import org.deeplearning4j.eval.Evaluation;
+import org.deeplearning4j.examples.finn.FinnImagePipeline;
 import org.deeplearning4j.nn.api.OptimizationAlgorithm;
 import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
@@ -26,28 +26,28 @@ import org.slf4j.LoggerFactory;
 /**
  * Created by agibsonccc on 9/16/15.
  */
-public class LenetMnistExample {
-    private static final Logger log = LoggerFactory.getLogger(LenetMnistExample.class);
+public class LenetFinnExample {
+    private static final Logger log = LoggerFactory.getLogger(LenetFinnExample.class);
 
     public static void main(String[] args) throws Exception {
-        int nChannels = 1;
-        int outputNum = 10;
-        int batchSize = 64;
-        int nEpochs = 10;
-        int iterations = 1;
-        int seed = 123;
+        FinnImagePipeline pipeline = new FinnImagePipeline();
 
         log.info("Load data....");
-        DataSetIterator mnistTrain = new MnistDataSetIterator(batchSize, true, 12345);
-        DataSetIterator mnistTest = new MnistDataSetIterator(batchSize, false, 12345);
+        DataSetIterator trainData = pipeline.getTrainData();
+        DataSetIterator testData = pipeline.getTestData();
+
+        int nChannels = 3;
+        int outputNum = 3;
+        int nEpochs = 10;
+        int iterations = 1;
 
         log.info("Build model....");
         MultiLayerConfiguration.Builder builder = new NeuralNetConfiguration.Builder()
-            .seed(seed)
-            .iterations(iterations)
+            .seed(12345)
+            .iterations(1)
             .regularization(true).l2(0.0005)
-            .learningRate(0.01)//.biasLearningRate(0.02)
-            //.learningRateDecayPolicy(LearningRatePolicy.Inverse).lrPolicyDecayRate(0.001).lrPolicyPower(0.75)
+            .learningRate(0.02).biasLearningRate(0.02)
+//            .learningRateDecayPolicy(LearningRatePolicy.Inverse).lrPolicyDecayRate(0.001).lrPolicyPower(0.75)
             .weightInit(WeightInit.XAVIER)
             .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
             .updater(Updater.NESTEROVS).momentum(0.9)
@@ -76,10 +76,10 @@ public class LenetMnistExample {
             .layer(4, new DenseLayer.Builder().activation("relu")
                 .nOut(500).build())
             .layer(5, new OutputLayer.Builder(LossFunctions.LossFunction.NEGATIVELOGLIKELIHOOD)
-                .nOut(outputNum)
+                .nOut(3)
                 .activation("softmax")
                 .build())
-            .setInputType(InputType.convolutionalFlat(28, 28, 1)) //See note below
+            .setInputType(InputType.convolutional(100, 100, 10)) //See note below
             .backprop(true).pretrain(false);
 
         /*
@@ -99,24 +99,23 @@ public class LenetMnistExample {
 
         MultiLayerConfiguration conf = builder.build();
         MultiLayerNetwork model = new MultiLayerNetwork(conf);
+        model.setListeners(new ScoreIterationListener(1));
         model.init();
 
 
         log.info("Train model....");
-        model.setListeners(new ScoreIterationListener(1));
         for (int i = 0; i < nEpochs; i++) {
-            model.fit(mnistTrain);
-            log.info("*** Completed epoch {} ***", i);
-
+            model.fit(trainData);
+            log.info("***  Completed epoch {} ***", i);
             log.info("Evaluate model....");
             Evaluation eval = new Evaluation(outputNum);
-            while (mnistTest.hasNext()) {
-                DataSet ds = mnistTest.next();
+            while (testData.hasNext()) {
+                DataSet ds = testData.next();
                 INDArray output = model.output(ds.getFeatureMatrix(), false);
                 eval.eval(ds.getLabels(), output);
             }
             log.info(eval.stats());
-            mnistTest.reset();
+            testData.reset();
         }
         log.info("****************Example finished********************");
     }
